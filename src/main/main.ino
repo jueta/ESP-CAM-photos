@@ -47,6 +47,8 @@ WiFiClient client;
 #define PCLK_GPIO_NUM     22
 
 const int timerInterval = 30000;    // time between each HTTP POST image
+const int restartTimer = 900000; 
+unsigned long restartMillis = 0;
 unsigned long previousMillis = 0;   // last time image was sent
 
 void setup() {
@@ -119,6 +121,10 @@ void loop() {
     }
     sendPhoto();
     previousMillis = currentMillis;
+  }
+  if (currentMillis - restartMillis >= restartTimer) {
+      ESP.restart();
+      restartMillis = currentMillis;
   }
 }
 
