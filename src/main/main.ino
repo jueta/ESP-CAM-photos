@@ -1,31 +1,20 @@
 /*
-  Rui Santos
-  Complete project details at https://RandomNerdTutorials.com/esp32-cam-post-image-photo-server/
-  
-  Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files.
-  
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.
+    ESP-CAM
 */
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include "soc/soc.h"
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <Wire.h>
 #include "soc/rtc_cntl_reg.h"
 #include "esp_camera.h"
+#include <EEPROM.h>
 
-const char* ssid = "AGREGADO";
-const char* password = "5px0p3r@c@0";
-
-String serverName = "slumpmix-mockup.herokuapp.com";   // REPLACE WITH YOUR Raspberry Pi IP ADDRESS
-//String serverName = "example.com";   // OR REPLACE WITH YOUR DOMAIN NAME
-
-String serverPath = "/webcam";     // The default serverPath should be upload.php
-
-const int serverPort = 80;
-
-WiFiClient client;
+//Configuracoes Temperatura
+#define ONE_WIRE_BUS 12 //variavel do pino 4 que esta plugado o Sensor de Temperatura
+#define PINO_RELE 13
 
 // CAMERA_MODEL_AI_THINKER
 #define PWDN_GPIO_NUM     32
@@ -33,7 +22,6 @@ WiFiClient client;
 #define XCLK_GPIO_NUM      0
 #define SIOD_GPIO_NUM     26
 #define SIOC_GPIO_NUM     27
-
 #define Y9_GPIO_NUM       35
 #define Y8_GPIO_NUM       34
 #define Y7_GPIO_NUM       39
@@ -46,24 +34,58 @@ WiFiClient client;
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
+// const char* ssid = "AGREGADO";
+// const char* password = "5px0p3r@c@0";
+
+//const char* ssid = "ReiNaN";
+//const char* password = "91dc116669";
+
+const char* ssid = "Projetos";
+const char* password = "91dc116669";
+
+
+OneWire oneWire(ONE_WIRE_BUS); //Instacia o Objeto oneWire e Seta o pino do Sensor para iniciar as leituras
+DallasTemperature temperature_sensor(&oneWire); //Repassa as referencias do oneWire para o Sensor Dallas (DS18B20)
+WiFiClient client;
+
+
+String serverName = "slumpmix-mockup.herokuapp.com";   // REPLACE WITH YOUR Raspberry Pi IP ADDRESS
+String serverPath = "/webcam";     // The default serverPath should be upload.php
+
+const int serverPort = 80;
+int stateRelay;
 const int timerInterval = 30000;    // time between each HTTP POST image
 const int restartTimer = 900000; 
 unsigned long restartMillis = 0;
 unsigned long previousMillis = 0;   // last time image was sent
 
+
+
+
 void setup() {
+  EEPROM.begin(1);
+
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); 
   Serial.begin(115200);
+
+  pinMode(PINO_RELE, OUTPUT);
+  stateRelay = EEPROM.read(0);
+  Serial.println("Estado Rele:");
+  Serial.println(stateRelay);
+  digitalWrite(PINO_RELE , stateRelay);
+
 
   WiFi.mode(WIFI_STA);
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
   WiFi.begin(ssid, password);  
+
   while (WiFi.status() != WL_CONNECTED) {
     Serial.print(".");
     delay(500);
   }
+
   Serial.println();
   Serial.print("ESP32-CAM IP Address: ");
   Serial.println(WiFi.localIP());
@@ -110,25 +132,34 @@ void setup() {
   }
 
   sendPhoto(); 
+
 }
 
 void loop() {
+
   unsigned long currentMillis = millis();
+
   if (currentMillis - previousMillis >= timerInterval) {
+
     if (WiFi.status() != WL_CONNECTED) {
       delay(1000);
       ESP.restart();
     }
+
     sendPhoto();
+
     previousMillis = currentMillis;
   }
-  if (currentMillis - restartMillis >= restartTimer) {
-      ESP.restart();
-      restartMillis = currentMillis;
-  }
+
 }
 
 String sendPhoto() {
+  //Sensor de Temperatura
+  temperature_sensor.requestTemperatures();
+  float temp = temperature_sensor.getTempCByIndex(0);
+  Serial.print("Temperatura : ");
+  Serial.println(temp); 
+  
   String getAll;
   String getBody;
 
@@ -151,7 +182,7 @@ String sendPhoto() {
     uint32_t extraLen = head.length() + tail.length();
     uint32_t totalLen = imageLen + extraLen;
   
-    client.println("POST " + serverPath + " HTTP/1.1");
+    client.println("POST " + serverPath + "?t=" + temp + "&r=" + stateRelay + " HTTP/1.1");
     client.println("Host: " + serverName);
     client.println("Content-Length: " + String(totalLen));
     client.println("Content-Type: multipart/form-data; boundary=RandomNerdTutorials");
@@ -193,13 +224,34 @@ String sendPhoto() {
       }
       if (getBody.length()>0) { break; }
     }
+
     Serial.println();
     client.stop();
-    Serial.println(getBody);
+    Serial.println("bunda");
+
+    if(String(getBody.charAt(1)) == "d"){
+      digitalWrite(PINO_RELE , LOW);
+      stateRelay = 0;
+      EEPROM.write(0,stateRelay);
+      EEPROM.commit();
+      Serial.println(EEPROM.read(0));
+      Serial.println("desligou rele");
+    }
+
+    else if(String(getBody.charAt(1)) == "l"){
+      digitalWrite(PINO_RELE , HIGH);
+      stateRelay = 1;
+      EEPROM.write(0, stateRelay);
+      EEPROM.commit();
+      Serial.println(EEPROM.read(0));
+      Serial.println("Ligou rele");
+    }
+
   }
   else {
     getBody = "Connection to " + serverName +  " failed.";
     Serial.println(getBody);
   }
+
   return getBody;
 }
