@@ -34,14 +34,14 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-// const char* ssid = "AGREGADO";
-// const char* password = "5px0p3r@c@0";
+ const char* ssid = "AGREGADO";
+ const char* password = "5px0p3r@c@0";
 
 //const char* ssid = "ReiNaN";
 //const char* password = "91dc116669";
 
-const char* ssid = "Projetos";
-const char* password = "91dc116669";
+//const char* ssid = "Projetos";
+//const char* password = "91dc116669";
 
 
 OneWire oneWire(ONE_WIRE_BUS); //Instacia o Objeto oneWire e Seta o pino do Sensor para iniciar as leituras
@@ -142,8 +142,15 @@ void loop() {
   if (currentMillis - previousMillis >= timerInterval) {
 
     if (WiFi.status() != WL_CONNECTED) {
-      delay(1000);
-      ESP.restart();
+      Serial.println("Reconnecting to WiFi...");
+      WiFi.disconnect();
+      WiFi.begin(ssid, password);  
+
+      while (WiFi.status() != WL_CONNECTED) {
+        Serial.print(".");
+        delay(500);
+      }
+      
     }
 
     sendPhoto();
